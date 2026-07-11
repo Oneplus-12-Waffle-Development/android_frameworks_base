@@ -478,6 +478,7 @@ java_defaults {
     defaults: ["framework-minus-apex-defaults"],
     libs: [
         "framework-non-updatable-unbundled-impl-libs",
+        "oplus-fwk-vibrator-lib",
     ],
 }
 
@@ -537,6 +538,7 @@ java_library {
         // TODO(b/429127828): Clean this up along with RELEASE_TELEPHONY_MODULE
         "//packages/modules/Telephony:__subpackages__",
         "//packages/modules/Virtualization:__subpackages__",
+        "//hardware/oplus/oplus-fwk",
     ],
     libs: select(release_flag("RELEASE_TELECOM_MAINLINE_MODULE"), {
         true: [],
