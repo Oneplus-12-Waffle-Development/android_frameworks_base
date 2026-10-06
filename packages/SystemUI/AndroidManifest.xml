@@ -667,6 +667,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- Fired by the alarm that turns the OTG connection off automatically -->
+        <receiver
+            android:name=".qs.OtgAutoOffReceiver"
+            android:exported="false" />
+
         <service android:name=".wallpapers.ImageWallpaper"
                 android:singleUser="true"
                 android:permission="android.permission.BIND_WALLPAPER"
