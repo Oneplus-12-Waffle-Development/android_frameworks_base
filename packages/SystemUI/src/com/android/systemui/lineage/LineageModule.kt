@@ -16,6 +16,8 @@
 
 package com.android.systemui.lineage
 
+import com.android.systemui.CoreStartable
+import com.android.systemui.qs.OtgAutoOffManager
 import com.android.systemui.qs.QsEventLogger
 import com.android.systemui.qs.pipeline.shared.TileSpec
 import com.android.systemui.qs.shared.model.TileCategory
@@ -33,6 +35,7 @@ import com.android.systemui.qs.tiles.FPSInfoTile
 import com.android.systemui.qs.tiles.HeadsUpTile
 import com.android.systemui.qs.tiles.LocaleTile
 import com.android.systemui.qs.tiles.OnTheGoTile
+import com.android.systemui.qs.tiles.OtgTile
 import com.android.systemui.qs.tiles.PowerShareTile
 import com.android.systemui.qs.tiles.PreferredNetworkTile
 import com.android.systemui.qs.tiles.ReadingModeTile
@@ -54,7 +57,9 @@ import com.android.systemui.smartpixel.ui.SmartPixelTile
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
+import dagger.multibindings.ClassKey
 import dagger.multibindings.IntoMap
+import dagger.multibindings.IntoSet
 import dagger.multibindings.StringKey
 
 @Module
@@ -143,6 +148,12 @@ interface LineageModule {
     @StringKey(OnTheGoTile.TILE_SPEC)
     fun bindOnTheGoTile(onTheGoTile: OnTheGoTile): QSTileImpl<*>
 
+    /** Inject OtgTile into tileMap in QSModule */
+    @Binds
+    @IntoMap
+    @StringKey(OtgTile.TILE_SPEC)
+    fun bindOtgTile(otgTile: OtgTile): QSTileImpl<*>
+
     /** Inject PowerShareTile into tileMap in QSModule */
     @Binds
     @IntoMap
@@ -221,11 +232,18 @@ interface LineageModule {
     @StringKey(WeatherTile.TILE_SPEC)
     fun bindWeatherTile(weatherTile: WeatherTile): QSTileImpl<*>
 
+    /** Turns the OTG connection off automatically when it is not used. */
+    @Binds
+    @IntoSet
+    @ClassKey(OtgAutoOffManager::class)
+    fun bindOtgAutoOffManager(otgAutoOffManager: OtgAutoOffManager): CoreStartable
+
     companion object {
         const val AMBIENT_DISPLAY_TILE_SPEC = "ambient_display"
         const val AOD_TILE_SPEC = "aod"
         const val CAFFEINE_TILE_SPEC = "caffeine"
         const val HEADS_UP_TILE_SPEC = "heads_up"
+        const val OTG_TILE_SPEC = "otg"
         const val POWERSHARE_TILE_SPEC = "powershare"
         const val PROFILES_TILE_SPEC = "profiles"
         const val READING_MODE_TILE_SPEC = "reading_mode"
@@ -487,6 +505,21 @@ interface LineageModule {
                     ),
                 instanceId = uiEventLogger.getNewInstanceId(),
                 category = TileCategory.DISPLAY,
+            )
+
+        @Provides
+        @IntoMap
+        @StringKey(OTG_TILE_SPEC)
+        fun provideOtgTileConfig(uiEventLogger: QsEventLogger): QSTileConfig =
+            QSTileConfig(
+                tileSpec = TileSpec.create(OTG_TILE_SPEC),
+                uiConfig =
+                    QSTileUIConfig.Resource(
+                        iconRes = R.drawable.ic_qs_otg,
+                        labelRes = R.string.quick_settings_otg_label
+                    ),
+                instanceId = uiEventLogger.getNewInstanceId(),
+                category = TileCategory.CONNECTIVITY,
             )
 
         @Provides
