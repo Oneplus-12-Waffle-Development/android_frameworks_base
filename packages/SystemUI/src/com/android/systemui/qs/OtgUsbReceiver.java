@@ -24,8 +24,8 @@ import android.hardware.usb.UsbManager;
 import android.util.Log;
 
 /**
- * Keeps the auto off countdown in sync with the peripherals plugged into the phone: the
- * countdown stops while something is connected and restarts from scratch once it is unplugged.
+ * Keeps the auto off countdown in sync with what is plugged into the phone: it stops while a
+ * peripheral is being powered in host mode and restarts from scratch once it is unplugged.
  */
 public class OtgUsbReceiver extends BroadcastReceiver {
 
@@ -34,22 +34,22 @@ public class OtgUsbReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         final String action = intent.getAction();
-        if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
-            Log.d(TAG, "A peripheral got connected, stopping the auto off countdown");
-            OtgAutoOffManager.cancelAlarm(context);
-        } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
-            if (!OtgManager.isEnabled(context)) {
-                return;
-            }
-            Log.d(TAG, "The peripheral got disconnected, restarting the auto off countdown");
-            OtgAutoOffManager.scheduleAlarm(context);
+        if (!UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)
+                && !UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)
+                && !UsbManager.ACTION_USB_STATE.equals(action)) {
+            return;
         }
+        // Whether this matters for the countdown depends on the direction of the USB role: a
+        // peripheral in host mode stops it, a PC or a charger in device mode does not.
+        Log.d(TAG, "USB connection changed (" + action + "), reconciling the auto off state");
+        OtgAutoOffManager.reconcile(context);
     }
 
     public static IntentFilter buildIntentFilter() {
         final IntentFilter filter = new IntentFilter();
         filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+        filter.addAction(UsbManager.ACTION_USB_STATE);
         return filter;
     }
 }

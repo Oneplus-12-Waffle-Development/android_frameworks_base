@@ -21,8 +21,10 @@ import android.app.PendingIntent;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.database.ContentObserver;
 import android.hardware.usb.UsbManager;
+import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -87,6 +89,9 @@ public class OtgAutoOffManager implements CoreStartable {
                 Context.RECEIVER_EXPORTED);
         mRegistered = true;
 
+        Log.d(TAG, "OTG auto off started, default delay "
+                + OtgManager.getAutoOffMinutes(mContext) + " min");
+
         // Restores the state after a reboot and heals any mismatch with the hardware.
         reconcile(mContext);
     }
@@ -100,13 +105,17 @@ public class OtgAutoOffManager implements CoreStartable {
             return;
         }
         if (!OtgManager.isEnabled(context)) {
+            Log.d(TAG, "reconcile: OTG off" + describeUsbState(context));
             cancelAlarm(context);
             if (OtgManager.getSwitch() == 1) {
                 OtgManager.setSwitch(false);
             }
             return;
         }
-        if (isPeripheralConnected(context)) {
+        final boolean peripheralConnected = isPeripheralConnected(context);
+        Log.d(TAG, "reconcile: OTG on, peripheral connected=" + peripheralConnected
+                + describeUsbState(context));
+        if (peripheralConnected) {
             // A peripheral is connected, it must never be powered off under it.
             cancelAlarm(context);
             return;
@@ -125,8 +134,9 @@ public class OtgAutoOffManager implements CoreStartable {
         }
         final PendingIntent pendingIntent = getPendingIntent(context);
         alarmManager.cancel(pendingIntent);
-        final long triggerAt = SystemClock.elapsedRealtime()
-                + OtgManager.getAutoOffMinutes(context) * MINUTE_MS;
+        final long minutes = OtgManager.getAutoOffMinutes(context);
+        final long triggerAt = SystemClock.elapsedRealtime() + minutes * MINUTE_MS;
+        Log.d(TAG, "Scheduling the auto off alarm in " + minutes + " min");
         try {
             alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent);
@@ -145,16 +155,54 @@ public class OtgAutoOffManager implements CoreStartable {
     }
 
     /**
-     * @return {@code true} when the phone is currently supplying a peripheral, either because
-     *         the charger HAL reports the connection as online or because a USB device is
-     *         enumerated.
+     * @return {@code true} when the phone is currently powering a peripheral in host mode,
+     *         i.e. when the USB data role is host or when a USB device is enumerated.
+     *
+     * <p>The charger HAL's {@code otg_online} is deliberately not used here: it reports the
+     * Type-C connection state, so it is {@code 1} while the phone is merely plugged into a
+     * charger or into a PC for debugging. Relying on it cancelled the countdown every time the
+     * phone was on the cable, which made the auto off timeout never fire.
      */
     public static boolean isPeripheralConnected(Context context) {
-        if (OtgManager.isOtgOnline()) {
-            return true;
+        return isHostConnected(context) || hasUsbDevice(context);
+    }
+
+    /**
+     * @return {@code true} when the USB data role is host. The value comes from the sticky
+     *         {@link UsbManager#ACTION_USB_STATE} broadcast that the USB service keeps up to
+     *         date from the port status; {@code UsbManager.getPortStatus()} itself is not
+     *         accessible from SystemUI.
+     */
+    private static boolean isHostConnected(Context context) {
+        try {
+            final Intent state = context.registerReceiver(null,
+                    new IntentFilter(UsbManager.ACTION_USB_STATE));
+            return state != null && state.getBooleanExtra(UsbManager.USB_HOST_CONNECTED, false);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Unable to read the USB state broadcast", e);
+            return false;
         }
+    }
+
+    private static boolean hasUsbDevice(Context context) {
         final UsbManager usbManager = context.getSystemService(UsbManager.class);
         return usbManager != null && !usbManager.getDeviceList().isEmpty();
+    }
+
+    /** The raw inputs of {@link #isPeripheralConnected}, for diagnosing the auto off state. */
+    private static String describeUsbState(Context context) {
+        final StringBuilder state = new StringBuilder();
+        state.append(", otg_online=").append(OtgManager.isOtgOnline());
+        state.append(", hw_switch=").append(OtgManager.getSwitch());
+        state.append(", host_connected=").append(isHostConnected(context));
+        final BatteryManager batteryManager = context.getSystemService(BatteryManager.class);
+        state.append(", charging=").append(
+                batteryManager != null && batteryManager.isCharging());
+        final UsbManager usbManager = context.getSystemService(UsbManager.class);
+        if (usbManager != null) {
+            state.append(", usb_devices=").append(usbManager.getDeviceList().size());
+        }
+        return state.toString();
     }
 
     private static PendingIntent getPendingIntent(Context context) {
